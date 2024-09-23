@@ -181,6 +181,14 @@ class BarTakipApp:
             toplam_tutar = sum([urun_fiyatlari[urun] * miktar for urun, miktar in self.secilen_masa.urunler.items()])
             self.masa_toplami_label.config(text=f"Masa Toplamı: {toplam_tutar} TL")
 
+            # Seçili ürünler toplamını anlık göster
+            self.urunler_listbox_name.bind('<<ListboxSelect>>', self.guncelle_secili_toplam)
+
+    def guncelle_secili_toplam(self, event):
+        secili_urunler = [self.urunler_listbox_name.get(i) for i in self.urunler_listbox_name.curselection()]
+        toplam_secilen_tutar = sum([urun_fiyatlari[urun] for urun in secili_urunler])
+        self.secilenler_toplami_label.config(text=f"Seçilenler Toplamı: {toplam_secilen_tutar} TL")
+
     def urun_ekle(self, urun, fiyat):
         if self.secilen_masa:
             self.secilen_masa.masaya_urun_ekle(urun, fiyat)
