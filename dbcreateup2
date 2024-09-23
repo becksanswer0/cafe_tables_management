@@ -1,0 +1,19 @@
+import sqlite3
+
+def veritabani_olustur():
+    conn = sqlite3.connect("bar_masa_takip.db")
+    cursor = conn.cursor()
+
+    # Masalara ürünler eklemek için tablo oluştur
+    cursor.execute('''CREATE TABLE IF NOT EXISTS masa_urunler (
+                        masa_no INTEGER,
+                        urun TEXT,
+                        miktar INTEGER,
+                        odendi INTEGER DEFAULT 0, -- 0: ödenmemiş, 1: ödenmiş
+                        PRIMARY KEY (masa_no, urun, odendi)
+                    )''')
+
+    conn.commit()
+    conn.close()
+
+veritabani_olustur()

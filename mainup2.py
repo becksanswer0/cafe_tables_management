@@ -34,18 +34,22 @@ class Masa:
         self.veritabanini_temizle()
         messagebox.showinfo("Ödeme", f"Masa {self.masa_no} için toplam ödeme: {toplam_tutar} TL. Masa kapatıldı.")
 
-    def veritabanina_kaydet(self, urun, cikart=False):
+    def veritabanina_kaydet(self, urun, cikart=False, odendi=False):
         conn = sqlite3.connect("bar_masa_takip.db")
         cursor = conn.cursor()
 
         if cikart:
-            cursor.execute("DELETE FROM masa_urunler WHERE masa_no = ? AND urun = ?", (self.masa_no, urun))
+            cursor.execute("DELETE FROM masa_urunler WHERE masa_no = ? AND urun = ? AND odendi = ?", (self.masa_no, urun, odendi))
         else:
-            cursor.execute("INSERT INTO masa_urunler (masa_no, urun, miktar) VALUES (?, ?, ?) ON CONFLICT(masa_no, urun) DO UPDATE SET miktar = ?", 
-                           (self.masa_no, urun, self.urunler[urun], self.urunler[urun]))
+            cursor.execute(
+                "INSERT INTO masa_urunler (masa_no, urun, miktar, odendi) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(masa_no, urun, odendi) DO UPDATE SET miktar = ?",
+                (self.masa_no, urun, self.urunler[urun], odendi, self.urunler[urun])
+            )
 
         conn.commit()
         conn.close()
+
 
     def veritabanini_temizle(self):
         conn = sqlite3.connect("bar_masa_takip.db")
@@ -88,6 +92,7 @@ masalar = [Masa(i) for i in range(1, 13)]
 class BarTakipApp:
     def __init__(self, root):
         self.root = root
+        self.urun_listesi = []
         self.root.configure(bg='#2C3E50') 
 
 
@@ -113,11 +118,12 @@ class BarTakipApp:
         self.info_frame.config(width=root.winfo_screenwidth() // 4)
 
         
-        self.urunler_listbox_name = tk.Listbox(self.info_frame, selectmode=tk.MULTIPLE, font=("Helvetica", 12), bg='#34495E', fg='#ECF0F1', width=30)
-        self.urunler_listbox_name.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.odenmeyen_urunler_listbox = tk.Listbox(self.info_frame, selectmode=tk.MULTIPLE, font=("Helvetica", 12), bg='#34495E', fg='#ECF0F1', width=30)
+        self.odenmeyen_urunler_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.urunler_listbox_price = tk.Listbox(self.info_frame, selectmode=tk.MULTIPLE, font=("Helvetica", 12), bg='#34495E', fg='#ECF0F1', width=10)
-        self.urunler_listbox_price.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.odenmis_urunler_listbox = tk.Listbox(self.info_frame, selectmode=tk.MULTIPLE, font=("Helvetica", 12), bg='#34495E', fg='#ECF0F1', width=30)
+        self.odenmis_urunler_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
 
         self.masa_toplami_label = tk.Label(self.info_frame, text="Masa Toplamı: 0 TL", font=("Helvetica", 14), bg='#2C3E50', fg='#F1C40F')
         self.masa_toplami_label.pack(pady=5)
@@ -169,21 +175,20 @@ class BarTakipApp:
         self.urunleri_goster()
 
     def urunleri_goster(self):
-        if self.secilen_masa:
-            self.urunler_listbox_name.delete(0, tk.END)
-            self.urunler_listbox_price.delete(0, tk.END)
-            self.secili_urunler.clear()
+        self.urun_listesi = []  # Ürün listesini başlat veya sıfırla
+        
+        # Ürünleri veritabanından çek
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT urun, odendi FROM masa_urunler WHERE masa_no = ?", (self.secilen_masa.masa_no,))
+        urunler = cursor.fetchall()
+        
+        # Tablodan çekilen ürünleri urun_listesi'ne ekle
+        self.urun_listesi = [{'urun': urun[0], 'odendi': urun[1]} for urun in urunler]
+        
+        for urun in self.urun_listesi:
+            if not urun['odendi']:
+                print(f"Ödenmemiş ürün: {urun['urun']}")
 
-            for urun, miktar in self.secilen_masa.urunler.items():
-                for _ in range(miktar):
-                    self.urunler_listbox_name.insert(tk.END, urun)
-                    self.urunler_listbox_price.insert(tk.END, urun_fiyatlari[urun])
-
-            toplam_tutar = sum([urun_fiyatlari[urun] * miktar for urun, miktar in self.secilen_masa.urunler.items()])
-            self.masa_toplami_label.config(text=f"Masa Toplamı: {toplam_tutar} TL")
-
-            # Seçili ürünler toplamını anlık göster
-            self.urunler_listbox_name.bind('<<ListboxSelect>>', self.guncelle_secili_toplam)
 
     def guncelle_secili_toplam(self, event):
         secili_urunler = [self.urunler_listbox_name.get(i) for i in self.urunler_listbox_name.curselection()]
@@ -197,15 +202,15 @@ class BarTakipApp:
 
     def secili_ode(self):
         if self.secilen_masa:
-            secili_urunler = [self.urunler_listbox_name.get(i) for i in self.urunler_listbox_name.curselection()]
+            secili_urunler = [self.odenmeyen_urunler_listbox.get(i) for i in self.odenmeyen_urunler_listbox.curselection()]
             toplam_secilen_tutar = sum([urun_fiyatlari[urun] for urun in secili_urunler])
-    
+
             for urun in secili_urunler:
                 self.secilen_masa.masadan_urun_cikar(urun)
-    
+                self.secilen_masa.veritabanina_kaydet(urun, odendi=True)
+
             self.secilenler_toplami_label.config(text=f"Seçilenler Toplamı: {toplam_secilen_tutar} TL")
             self.urunleri_goster()
-
 
     def masayi_kapat(self):
         if self.secilen_masa:
